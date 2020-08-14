@@ -41,13 +41,14 @@ function getargs()
             help = "arguments to pass to the parallel engine"
             arg_type = String
             default = ""
-        "scp"
-            help = "input scp file"
-            arg_type = String
-            required = true
         "outdir"
             help = "output directory where will be stored the features"
             arg_type = String
+            required = true
+        "scps"
+            help = "input scp files"
+            arg_type = String
+            nargs='+'
             required = true
     end
     args = parse_args(s)
@@ -55,9 +56,9 @@ end
 
 
 const args = getargs()
+const outdir = args["outdir"]
+const scps = args["scps"]
 
-const scp = abspath(args["scp"])
-const outdir = abspath(args["outdir"])
 
 # Make sure the directory exists
 run(`mkdir -p $outdir`)
@@ -67,7 +68,7 @@ addprocs(SGEManager(args["jobs"]), args = args["jobs-args"],
          exeflags = "--project=$(Base.active_project())")
 @everywhere using SpeechFeatures
 @everywhere using WAV
-@everywhere using JLD2
+@everywhere using BSON
 @everywhere const args = $args
 @everywhere const outdir = $outdir
 
@@ -87,17 +88,28 @@ addprocs(SGEManager(args["jobs"]), args = args["jobs-args"],
     hifreq = args["high-freq"]
 )
 
-@info "extracting the features..."
-@sync @distributed for line in readlines(scp)
-    uttid, fname = split(line)
+totalcount = 0
+for scp in scps
+    @info "extracting the features from $scp"
 
-    channels, srate = wavread(fname, format="double")
-    channels *= typemax(Int16)
-    s = channels[:, 1]
+    count = @distributed (a, b) -> a + b for line in readlines(scp)
+        uttid, fname = split(line)
 
-    data = s |> extractor
+        channels, srate = wavread(fname, format="double")
+        channels *= typemax(Int16)
+        s = channels[:, 1]
 
-    @save joinpath(outdir, uttid * ".jld2") data args["frame-rate"]
-    #JLD.save(joinpath(outdir, uttid * ".jld"), "data", X)
+        data = s |> extractor
+
+        bson(joinpath(outdir, uttid * ".bson"),
+             Dict(:data => data, :framerate => args["frame-rate"]))
+
+        # to count how many recordings were processed
+        1
+    end
+    global totalcount += 1
 end
+
+@info "successfuly processed $totalcount files"
+
 

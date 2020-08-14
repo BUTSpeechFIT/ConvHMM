@@ -5,11 +5,12 @@ version = "0.1.0"
 
 [deps]
 ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
+BSON = "fbb218c0-5317-5bc6-957e-2ee96dd4b1f0"
 BUTSGEManager = "e3641d50-4a55-4a9f-9bd6-321ad4c07cb0"
 ExpFamilyDistributions = "ac7c78bc-e309-483d-b879-ab7fdbfc3919"
 Glob = "c27321d9-0574-5035-807b-f59d2c89b15c"
-JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 MarkovModels = "c2ae6250-d0a1-11ea-0991-234599ce5244"
+NaturalSort = "c020b1a1-e9b0-503a-9c33-f039bfc54a85"
 PaddedViews = "5432bcbf-9aad-5242-b902-cca2824c8663"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 SpeechFeatures = "6f3487c4-5ca2-4050-bfeb-2cf56df92307"

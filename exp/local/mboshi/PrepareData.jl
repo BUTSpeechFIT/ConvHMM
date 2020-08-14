@@ -96,8 +96,8 @@ function main()
         end
     end
 
-    @info "creating the phone inventory"
-    open(joinpath(outputdir, "lang", "phones"), "w") do f
+    @info "creating the unit inventory"
+    open(joinpath(outputdir, "lang", "units"), "w") do f
         println(f, "sil non-speech-unit")
         for p in phones
             println(f, "$p speech-unit")

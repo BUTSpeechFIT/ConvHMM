@@ -189,6 +189,22 @@ end
 #######################################################################
 # Utilities
 
+function save(
+    fname::AbstractString,
+    model::Vector{Vector{ARNormal1D{K}}}
+) where K
+    bson(fname, Dict(:model => model, :order=>K))
+end
+
+function load(
+    fname::AbstractString,
+)
+    data = BSON.load(fname)
+    m = data[:model]
+    K = data[:order]
+    convert(Vector{Vector{ARNormal1D{K}}}, m)
+end
+
 export trajectory
 
 function trajectory(

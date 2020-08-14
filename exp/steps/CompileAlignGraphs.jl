@@ -1,6 +1,6 @@
 
 using ArgParse
-using JLD2
+using BSON
 using MarkovModels
 using Distributed
 
@@ -73,13 +73,13 @@ run(`mkdir -p $outdir`)
 
 @info "initializing the workers"
 addprocs(SGEManager(args["jobs"]), args = args["jobs-args"],
-         exeflags = "--project=$(Base.active_project())", clean_output = false)
-@everywhere using JLD2
+         exeflags = "--project=$(Base.active_project())")
+@everywhere using BSON
 @everywhere using MarkovModels
 @everywhere const outdir = $outdir
 @everywhere const lexicon = $lexicon
 @everywhere const hmmsfile = $hmmsfile
-@everywhere @load hmmsfile hmms
+@everywhere hmms = BSON.load(hmmsfile)[:hmms]
 
 @info "compiling alignment graphs"
 @sync @distributed for line in readlines(trans)
@@ -92,8 +92,6 @@ addprocs(SGEManager(args["jobs"]), args = args["jobs-args"],
     end
 
     ali = compose!(compose!(LinearFSM(words), lexicon), hmms) |> removenilstates!
-    jldopen(joinpath(outdir, uttid * ".jld2"), "w") do f
-        f["ali"] = ali
-    end
+    bson(joinpath(outdir, uttid * ".bson"), Dict(:ali => ali))
 end
 

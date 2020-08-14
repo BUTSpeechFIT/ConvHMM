@@ -1,7 +1,7 @@
 
 using ArgParse
 using ConvHMM
-using JLD2
+using BSON
 using LinearAlgebra
 using MarkovModels
 using Random
@@ -41,20 +41,12 @@ function getargs()
             help = "HMM configuration file"
             arg_type = String
             required = true
-        "conf-emission"
-            help = "emission configuration file"
-            arg_type = String
-            required = true
         "units"
             help = "list of \"unit\" for which to create a pdf"
             arg_type = String
             required = true
-        "out-hmms"
-            help = "output file where will be stored the HMMs"
-            arg_type = String
-            required = true
-        "out-emissions"
-            help = "output file where will be stored the emissions"
+        "outdir"
+            help = "output directory where will be stored the HMMs and the emissions"
             arg_type = String
             required = true
     end
@@ -66,10 +58,10 @@ const args = getargs()
 const uttids = readlines(args["uttids"])
 const feadir = args["feadir"]
 const confhmm = args["conf-hmm"]
-const confpdf = args["conf-emission"]
 const units = readlines(args["units"])
-const outhmms = args["out-hmms"]
-const outemissions = args["out-emissions"]
+const outdir = args["outdir"]
+
+run(`mkdir -p $outdir`)
 
 if args["verbose"] ENV["JULIA_DEBUG"] = Main end
 
@@ -122,7 +114,7 @@ for unit in units
 end
 @debug "number of created pdf: $pdfcount"
 
-@save outhmms hmms
+bson(joinpath(outdir, "hmms.bson"), Dict(:hmms => hmms))
 
 ########################################################################
 # Create the emissions
@@ -130,14 +122,16 @@ end
 function getstats(rng, uttids, n, D)
     x̂ = zeros(D)
     x̂² = zeros(D)
+    N = 0.
     for i in 1:n
-        path = joinpath(feadir, uttids[rand(rng, 1:length(uttids))] * ".jld2")
-        @load path data
+        path = joinpath(feadir, uttids[rand(rng, 1:length(uttids))] * ".bson")
+        data = BSON.load(path)[:data]
+        N += size(data, 2)
         x̂ .+= dropdims(sum(data, dims = 2), dims = 2)
         x̂² .+= dropdims(sum(data.^2, dims = 2), dims = 2)
     end
-    μ̂ = x̂ ./ n
-    μ̂, (x̂² ./ n) - μ̂.^2
+    μ̂ = x̂ ./ N
+    μ̂, (x̂² ./ N) - μ̂.^2
 end
 
 const S = pdfcount
@@ -145,7 +139,7 @@ const K = args["filter-order"]
 const strength = args["prior-strength"]
 
 # Check the dimension of the features
-@load joinpath(feadir, uttids[1] * ".jld2") data
+data = BSON.load(joinpath(feadir, uttids[1] * ".bson"))[:data]
 const D = size(data, 1)
 
 seed = args["seed"]
@@ -170,6 +164,5 @@ a₀ = strength
 b₀ = strength
 emissions = [[ARNormal1D(K, μ₀s[d], Σ₀s[d], a₀, b₀) for i in 1:S] for d in 1:D];
 
-@save outemissions emissions
-
+save(joinpath(outdir, "emissions_0.bson"), emissions)
 
