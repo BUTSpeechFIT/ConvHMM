@@ -85,7 +85,7 @@ echo "--> Training"
 if [ ! -f $modeldir/.done.training ]; then
 
     julia steps/Train.jl \
-        -j 30 -a "-q short.q@@blade" \
+        -j 30 -a "-q all.q@@blade" \
         -e $epochs \
         $datadir/$corpus/$trainset/uttids \
         $feadir/$corpus \
