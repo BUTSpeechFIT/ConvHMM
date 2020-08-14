@@ -101,6 +101,24 @@ function update_h!(
     end
 end
 
+function accstats_h(
+    models::Vector{ARNormal1D{K}},
+    x::Vector{T},
+    resps::Matrix{T}
+) where {K, T<:AbstractFloat}
+
+    r = Regressors1D(K, x)
+
+    # Sufficient statistics
+    s1 = hcat([xₜ * x̂ₜ for (xₜ, x̂ₜ) in zip(x, r)]...)
+    s2 = hcat([vec(x̂ₜ* x̂ₜ') for x̂ₜ in r]...)
+    stats_h = vcat(s1, -.5 * s2)
+
+    accstats = (resps * stats_h')
+
+    [mean(m.λposterior) .* s for (m, s) in zip(models, eachrow(accstats))]
+end
+
 function update_h!(
     models::Vector{Vector{ARNormal1D{K}}},
     X::Matrix{T},
@@ -132,6 +150,30 @@ function update_λ!(
         η₀ = naturalparam(m.λprior)
         update!(m.λposterior, η₀ .+ accstats)
     end
+end
+
+function accstats_λ(
+    models::Vector{ARNormal1D{K}},
+    x::Vector{T},
+    resps::Matrix{T}
+) where {K, T<:AbstractFloat}
+
+    r = Regressors1D(K, x)
+
+    # Sufficient statistics
+    s1 = hcat([xₜ * x̂ₜ for (xₜ, x̂ₜ) in zip(x, r)]...)
+    s2 = hcat([vec(x̂ₜ* x̂ₜ') for x̂ₜ in r]...)
+    stats_h = vcat(s1, -.5 * s2)
+
+    η_hs = vcat([gradlognorm(model.hposterior)' for model in models]...)
+
+    accstats = Vector{Vector{T}}()
+    for (hs, γ)  in zip(eachrow(η_hs * stats_h), eachrow(resps))
+        λs = hcat(-.5 * x.^2 .+ hs, .5 * ones(T, length(x)))'
+        s = λs * γ
+        push!(accstats, s)
+    end
+    accstats
 end
 
 function update_λ!(
