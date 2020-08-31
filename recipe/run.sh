@@ -19,7 +19,7 @@ trainset=train
 expdir=exp
 
 # Model parameters
-forder=5         # filter order
+forder=0         # filter order
 pstrength=1      # prior strength
 epochs=30        # number of training epochs
 
@@ -55,6 +55,7 @@ modeldir=$expdir/$corpus/convhmm_K${forder}_p${pstrength}
 if [ ! -f $modeldir/.done.init ]; then
 
     julia steps/CreateConvHMM.jl \
+        -f $forder -p $pstrength \
         $datadir/$corpus/$trainset/uttids \
         $feadir/$corpus \
         conf/hmm.yml \
