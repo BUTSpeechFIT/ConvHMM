@@ -173,7 +173,7 @@ function kldiv_post(model)
     for d in 1:length(model)
         for m in model[d]
             KL += kldiv(m.hposterior, m.hprior)
-            KL += kldiv(m.λposterior, m.λposterior)
+            KL += kldiv(m.λposterior, m.λprior)
         end
     end
     KL
@@ -219,7 +219,7 @@ for e in start:epochs
     end
 
     kl = kldiv_post(emissions)
-    𝓛 = (totll - kldiv_post(emissions)) / totN
+    𝓛 = (totll - kl) / totN
     @info "epoch $(e)/$(epochs) 𝓛 = $(round(𝓛, digits = 3)) llh = $(round(totll, digits = 3)) KL = $(round(kl, digits=3))"
 
     if e % 2 == 1
