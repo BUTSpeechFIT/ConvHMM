@@ -218,8 +218,9 @@ for e in start:epochs
         (accstats, totll, N)
     end
 
+    kl = kldiv_post(emissions)
     𝓛 = (totll - kldiv_post(emissions)) / totN
-    @info "epoch $(e)/$(epochs) 𝓛 = $(round(𝓛, digits = 3))"
+    @info "epoch $(e)/$(epochs) 𝓛 = $(round(𝓛, digits = 3)) llh = $(round(totll, digits = 3)) KL = $(round(kl, digits=3))"
 
     if e % 2 == 1
         update_h!(emissions, stats)
