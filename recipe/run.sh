@@ -13,7 +13,7 @@ export JULIA_PROJECT=../Project.toml
 # Directories
 datadir=data
 corpus=mboshi
-corpusdir=/mnt/matylda5/iondel/workspace/2020/ConvHMM/exp/mboshi-french-parallel-corpus
+corpusdir=/mnt/matylda5/iondel/workspace/2020/ConvHMM/recipe/mboshi-french-parallel-corpus
 feadir=features  # should be on a disk with large storage
 trainset=train
 expdir=exp
