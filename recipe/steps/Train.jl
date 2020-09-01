@@ -196,7 +196,6 @@ for e in start:epochs
 
     @everywhere epoch = $e
     stats, totll, totN = @distributed reducer for uttid in uttids
-        println(uttid)
         X = BSON.load(joinpath(feadir, uttid * ".bson"))[:data]
         ali = BSON.load(joinpath(alidir, uttid * ".bson"))[:ali]
 
