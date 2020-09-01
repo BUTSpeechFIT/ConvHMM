@@ -39,7 +39,9 @@ ARNormal1D(K, μ₀, Σ₀, a₀, b₀, μ, Σ) = ARNormal1D(K, μ₀, Σ₀, a�
 #######################################################################
 # Expected log-likelihood
 
-function (model::ARNormal1D{K})(x::Vector{T}) where {K, T <: AbstractFloat}
+function (model::ARNormal1D{K})(
+    x::Vector{T}
+) where {K, T <: AbstractFloat}
     r = Regressors1D(K, x)
 
     # Expectation of the natural parameters
@@ -54,10 +56,12 @@ function (model::ARNormal1D{K})(x::Vector{T}) where {K, T <: AbstractFloat}
     # Sufficient statistics for λ
     stats_λ = hcat(-.5 * x.^2 .+ stats_h' * η_h, .5 * ones(T, length(x)))
 
-    stats_λ * η_λ .- log(2π)
+    stats_λ * η_λ .- .5 * log(2π)
 end
 
-function (models::Vector{ARNormal1D{K}})(x::Vector{T}) where {K, T<:AbstractFloat}
+function (models::Vector{ARNormal1D{K}})(
+    x::Vector{T}
+) where {K, T<:AbstractFloat}
     r = Regressors1D(K, x)
 
     η_hs = vcat([gradlognorm(model.hposterior)' for model in models]...)
@@ -72,11 +76,61 @@ function (models::Vector{ARNormal1D{K}})(x::Vector{T}) where {K, T<:AbstractFloa
            for (row, η_λ) in zip(eachrow(η_hs * stats_h), eachrow(η_λs))]...)
 end
 
-function (models::Vector{Vector{ARNormal1D{K}}})(X::Matrix{T}) where {K, T<:AbstractFloat}
-    reduce((a, b) -> a .+ b, [models[d](X[d, :]) for d in 1:size(X, 1)])
+function (models::Vector{Vector{ARNormal1D{K}}})(
+    X::Matrix{T}
+) where {K, T<:AbstractFloat}
+    reduce(+, [models[d](X[d, :]) for d in 1:size(X, 1)])
 end
 
 #######################################################################
+# Posterior predictive
+#
+# NOTE: we use the MAP of precision parameters and we integrate over the
+#       the filters (h_1, h_2, ...)
+
+function predict(
+    model::ARNormal1D{K},
+    x::Vector{T}
+) where {K, T<:AbstractFloat}
+
+    r = Regressors1D(K, x)
+    λ_map_inv = 1 / mean(model.λposterior)[1]
+    m = model.hposterior.μ
+    Σ = model.hposterior.Σ
+
+    # Sufficient statistics for h
+    s1 = hcat([x̂ₜ for x̂ₜ in r]...)
+    s2 = hcat([vec(x̂ₜ* x̂ₜ') for x̂ₜ in r]...)
+
+    ψ = s1' * m
+    ϑ_inv = s2' * vec(Σ)
+
+    prec = 1 ./ (λ_map_inv .+ ϑ_inv)
+
+    -.5 .* prec .* (x .- ψ).^2 .+ .5 .* log.(prec) .- .5 * log(2π)
+end
+
+function predict(
+    models::Vector{ARNormal1D{K}},
+    x::Vector{T}
+) where {K, T<:AbstractFloat}
+    vcat([predict(models[s], x)' for s in 1:length(models)]...)
+end
+
+"""
+    predict(model, X)
+
+Return the logarithm of the posterior predictive distribution for each
+frame of `X`
+"""
+function predict(
+    models::Vector{Vector{ARNormal1D{K}}},
+    X::Matrix{T}
+) where {K, T<:AbstractFloat}
+    reduce(+, [predict(models[d], X[d, :]) for d in 1:size(X, 1)])
+end
+
+########################################################################
 # Accumulate statistics
 
 function update_h!(

@@ -29,6 +29,9 @@ function Base.iterate(r::Regressors1D{K}, state = nothing) where K
 
     buffer[:] = r.x[t-K:t]
     buffer[end] = 1 # bias regressor
-    return (buffer, (buffer, t+1))
+
+    # we return a shallow copy of the buffer to avoid issue if the user
+    # does not copy the data himself.
+    return (copy(buffer), (buffer, t+1))
 end
 

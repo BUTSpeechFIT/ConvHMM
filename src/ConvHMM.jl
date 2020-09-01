@@ -11,13 +11,14 @@ include("regressor.jl")
 
 export ARNormal1D
 
-export elbo
 export accstats_λ
-export update_λ!
 export accstats_h
-export update_h!
+export elbo
+export predict
 export save
 #export load
+export update_λ!
+export update_h!
 
 include("arnormal.jl")
 
