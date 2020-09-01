@@ -80,7 +80,7 @@ function main()
     @info "preparing the lang directory..."
     run(`mkdir -p $(joinpath(outputdir, "lang"))`)
 
-    @info "creating the lexicon"
+    @info "creating the word level lexicon"
     lexicon = Dict()
     phones = Set()
     for path in glob("*mb", joinpath(inputdir, "full_corpus_newsplit", "all"))
@@ -90,9 +90,16 @@ function main()
             lexicon[w] = [l for l in w]
         end
     end
-    open(joinpath(outputdir, "lang", "lexicon"), "w") do f
+    open(joinpath(outputdir, "lang", "lexicon.wrd"), "w") do f
         for w in sort([k for k in keys(lexicon)])
             println(f, "$w $(join(lexicon[w], " "))")
+        end
+    end
+
+    @info "creating the phone level lexicon (identity map)"
+    open(joinpath(outputdir, "lang", "lexicon.char"), "w") do f
+        for w in sort([k for k in phones])
+            println(f, "$w $w")
         end
     end
 
