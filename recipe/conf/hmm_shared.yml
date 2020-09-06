@@ -1,7 +1,7 @@
 # HMM configuration for different units
 
 non-speech-unit:
-    sharedpdf: false
+    sharedpdf: true
     topology:
         - {start_id: start, end_id: 1,   trans_prob: 1.0}
         - {start_id: 1,     end_id: 1,   trans_prob: 0.25}
@@ -24,7 +24,7 @@ non-speech-unit:
         - {start_id: 5,     end_id: end, trans_prob: 0.25}
 
 speech-unit:
-    sharedpdf: false
+    sharedpdf: true
     topology:
         - {start_id: start, end_id: 1,   trans_prob: 1.0}
         - {start_id: 1,     end_id: 1,   trans_prob: 0.75}
