@@ -6,16 +6,15 @@ using ArgParse
 using BSON
 using MarkovModels
 
-# Disambiguation symbol to distinguish between word state and
-# phone/character state
-const DIS_SYM = "wrd"
-
 function getargs()
     s = ArgParseSettings()
     @add_arg_table! s begin
         "--add-sil", "-s"
             help = "add silence add the beginning/end of decoding graph (used only if lm is not specified)"
             action = :store_true
+        "--disambig-sym", "-d"
+            help = "Disambiguation symbol to distinguish word state from phone state"
+            default = "wrd"
         "--lm", "-l"
             help = "Language Model graph to use (if not provided, build a flat LM)"
             default = ""
@@ -36,6 +35,7 @@ function getargs()
 end
 
 const args = getargs()
+const dis_sym = args["disambig-sym"]
 const lmfile = args["lm"]
 const lexiconfile = args["lexicon"]
 const hmmsfile = args["hmms"]
@@ -51,7 +51,7 @@ const pronuns = Dict{String, Vector{FSM}}()
 open(lexiconfile, "r") do f
     for line in eachline(f)
         tokens = split(line)
-        word = "$DIS_SYM:$(tokens[1])"
+        word = "$dis_sym:$(tokens[1])"
         pronun = tokens[2:end]
         ps = get(pronuns, word, FSM[])
         push!(ps, LinearFSM(pronun))
@@ -75,12 +75,14 @@ function build_flat_lm(lexicon, addsil::Bool)
         final = addstate!(lm, label = "sil")
         link!(lm, final, finalstate(lm))
     end
+    anchor = addstate!(lm)
+    link!(lm, init, anchor)
+    link!(lm, anchor, final)
     for w in keys(lexicon)
         s = addstate!(lm, label = w)
-        link!(lm, init, s)
-        link!(lm, s, final)
+        link!(lm, anchor, s)
+        link!(lm, s, anchor)
     end
-    link!(lm, final, init)
     lm |> weightnormalize!
 end
 
