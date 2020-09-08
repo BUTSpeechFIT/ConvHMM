@@ -16,7 +16,6 @@ export accstats_h
 export elbo
 export predict
 export save
-#export load
 export update_λ!
 export update_h!
 
