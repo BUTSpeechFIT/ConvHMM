@@ -19,6 +19,14 @@ function getargs()
             help = "number of epochs to train"
             arg_type = Int
             default = 1
+        "--init", "-i"
+            help = "initial model to compute the alignments"
+            arg_type = String
+            default = ""
+        "--update-prec-rate", "-u"
+            help = "update rate of the precision parameter"
+            arg_type = Int
+            default = 10
         "--jobs", "-j"
             help = "number of jobs to run in parallel"
             arg_type = Int
@@ -48,11 +56,15 @@ function getargs()
 end
 
 const args = getargs()
+const initfile = args["init"]
+const updaterate = args["update-prec-rate"]
 const uttids = readlines(args["uttids"])
 const feadir = args["feadir"]
 const alidir = args["alidir"]
 const outdir = args["modeldir"]
 const epochs = args["epochs"]
+
+const init = initfile == "" ? nothing : ConvHMM.load(initfile)
 
 # Make sure the directory exists
 run(`mkdir -p $outdir`)
@@ -70,6 +82,9 @@ addprocs(SGEManager(args["jobs"]), args = args["jobs-args"],
 @everywhere const args = $args
 @everywhere const feadir = $feadir
 @everywhere const alidir = $alidir
+@everywhere const init = $init
+@everywhere const updaterate = $updaterate
+
 
 ########################################################################
 # Functions to accumulate statistics and to update the parameters
@@ -203,12 +218,17 @@ for e in start:epochs
         N = size(X, 2)
 
         # E-step
-        lnαβ, totll = αβrecursion(ali, emissions(X))
+
+        # Special case if this is the first epoch and the user has
+        # specified a model for initialization
+        alimodel = epoch == 1 && ! isnothing(init) ? init : emissions
+
+        lnαβ, totll =   αβrecursion(ali, alimodel(X))
         γ_sparse = resps(ali, lnαβ, dense = false)
         γ = zeros(S, N)
         for idx in keys(γ_sparse) γ[idx, :] = γ_sparse[idx] end
 
-        if e % 2 == 1
+        if e % updaterate > 0
             accstats = accumulate_h(emissions, X, γ)
         else
             accstats = accumulate_λ(emissions, X, γ)
@@ -221,7 +241,7 @@ for e in start:epochs
     𝓛 = (totll - kl) / totN
     @info "epoch $(e)/$(epochs) 𝓛 = $(round(𝓛, digits = 3)) llh = $(round(totll, digits = 3)) KL = $(round(kl, digits=3))"
 
-    if e % 2 == 1
+    if e % updaterate > 0
         update_h!(emissions, stats)
     else
         update_λ!(emissions, stats)

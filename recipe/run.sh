@@ -22,8 +22,9 @@ expdir=exp       # root directory where will be stored the models
 # Model parameters
 forder=1                    # filter order
 pstrength=1                 # prior strength
-epochs=100                  # number of training epochs
-modelconf=conf/hmm.yml      # HMM configuration file
+epochs=30                   # number of training epochs
+modelconf=conf/hmm_shared.yml      # HMM configuration file
+precrate=2                  # precision update rate
 
 # We extract the name of the configuration file to have distinguishable
 # experiment directory name
@@ -33,6 +34,12 @@ confname=$(basename ${modelconf%.*})
 #   * word (".../lexicon.wrd")
 #   * phone/characters (".../lexicon.char")
 lexicon=$datadir/$corpus/lang/lexicon.char
+
+# Leave empty to marginalized
+marginalize="--marginalize"
+
+# Model for initializing the alignments
+#initmodel=$expdir/$corpus/${confname}_K0_p${pstrength}/emissions_100.bson
 
 ########################################################################
 
@@ -69,7 +76,7 @@ if [ ! -f $modeldir/.done.init ]; then
         -f $forder -p $pstrength \
         $datadir/$corpus/$trainset/uttids \
         $feadir/$corpus \
-        conf/hmm.yml \
+        $modelconf \
         $datadir/$corpus/lang/units \
         $modeldir
 
@@ -97,9 +104,13 @@ fi
 echo "--> Training"
 if [ ! -f $modeldir/.done.training ]; then
 
+    # To initialize with an other model
+    # -i $initmodel \
+
     julia steps/Train.jl \
         -j 30 -a "-q all.q@@blade" \
         -e $epochs \
+        -u $precrate \
         $datadir/$corpus/$trainset/uttids \
         $feadir/$corpus \
         $modeldir/aligns \
@@ -111,6 +122,9 @@ else
 fi
 
 decodedir=$modeldir/decode/$testset
+if [ ! -z $marginalize ]; then
+    decodedir=${decodedir}_marginalized
+fi
 mkdir -p $decodedir
 
 echo "--> Preparing decoding graph"
@@ -132,11 +146,12 @@ if [ ! -f $decodedir/.done ]; then
 
     julia steps/Decode.jl \
         -j 10 -a "-q all.q@@blade" \
+        "$marginalize" \
         $modeldir/emissions_${epochs}.bson \
         $modeldir/decode/decgraph.bson \
         $datadir/$corpus/$testset/uttids \
         $feadir/$corpus \
-        $decodedir
+        ${decodedir}
 
     date > $decodedir/.done
 else
