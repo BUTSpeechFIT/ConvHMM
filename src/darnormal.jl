@@ -202,15 +202,6 @@ function save(
     fname::AbstractString,
     model::Vector{DARNormal1D{K}}
 ) where K
-    bson(fname, Dict(:model => model, :order=>K))
-end
-
-function load(
-    fname::AbstractString,
-)
-    data = BSON.load(fname)
-    m = data[:model]
-    K = data[:order]
-    convert(Vector{DARNormal1D{K}}, m)
+    bson(fname, Dict(:model => model, :order=>K, :type=>typeof(model)))
 end
 
