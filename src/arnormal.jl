@@ -1,6 +1,27 @@
 # Autoregressive-Normal
 #
 
+#######################################################################
+# Model structure and constructor
+
+"""
+    struct ARNormal
+        hprior::Normal
+        hposterior::Normal
+        λprior::Gamma
+        λposterior::Gamma
+    end
+
+AutoRegressive Normal distribution of order `K`. When `K` is `0`, the
+distribution is a univariate Normal distribution. Note that `hprior`
+and `hposterior` are `K+1` multivariate Normal distribution.
+
+Constructor:
+
+    ARNormal1D(μ₀, Σ₀, a₀, b₀[, μ = missing, Σ = missing, a = missing, b = missing])
+
+The filter order `K` is set to `length(μ₀) - 1`.
+"""
 struct ARNormal1D{K}
     # Prior/posterior over `h`, the IIR filter
     hprior::Normal
@@ -11,35 +32,50 @@ struct ARNormal1D{K}
     λposterior::Gamma
 end
 
-#######################################################################
-# Constructors
-
 function ARNormal1D(
-    K::Int64,
     μ₀::Vector{T},
     Σ₀::Matrix{T},
     a₀::Real,
-    b₀::Real,
-    μ::Vector{T},
-    Σ::Matrix{T},
-    a::Real,
-    b::Real
+    b₀::Real;
+    μ::Union{Vector{T}, Missing} = missing,
+    Σ::Union{Matrix{T}, Missing} = missing,
+    a::Union{Real, Missing} = missing,
+    b::Union{Real, Missing} = missing
 ) where T <: AbstractFloat
-    ARNormal1D{K}(
-        Normal(μ₀, Σ₀),
-        Normal(μ, Σ),
-        Gamma([T(a₀)], [T(b₀)]),
-        Gamma([T(a)], [T(b)]),
-    )
+    K = length(μ₀) - 1
+    μ = ismissing(μ) ? copy(μ₀) : μ
+    Σ = ismissing(Σ) ? copy(Σ₀) : Σ
+    a = ismissing(a) ? a₀ : a
+    b = ismissing(b) ? b₀ : b
+
+    a₀ = T(a₀)
+    b₀ = T(b₀)
+    a = T(a)
+    b = T(b)
+    ARNormal1D{K}(Normal(μ₀, Σ₀), Normal(μ, Σ), Gamma([a₀], [b₀]), Gamma([a], [b]))
 end
-ARNormal1D(K, μ₀, Σ₀, a₀, b₀) = ARNormal1D(K, μ₀, Σ₀, a₀, b₀, deepcopy(μ₀),
-                                           deepcopy(Σ₀), a₀, b₀)
-ARNormal1D(K, μ₀, Σ₀, a₀, b₀, μ, Σ) = ARNormal1D(K, μ₀, Σ₀, a₀, b₀, μ, Σ, a₀, b₀)
+
+"""
+    const ARNormal1DSet{K} = Vector{ARNormal1D{K}} where K
+
+Set of AutoRegressive Normal distributions.
+"""
+const ARNormal1DSet{K} = Vector{ARNormal1D{K}} where K
 
 #######################################################################
 # Expected log-likelihood
 
-function (model::ARNormal1D{K})(
+"""
+    loglikelihood(model::ARNormal1D{K}, x::Vector{T})
+    loglikelihood(models::ARNormal1DSet{K}, x::Vector{T})
+    loglikelihood(models::Vector{ARNormal1DSet{K}}, X::Matrix{T})
+
+Evaluate the expectation of the log-likelihood w.r.t. the variational
+posterior. When the model is a (vector of) `ARNomralSet`, the
+log-likelihood per component is returned.
+"""
+function loglikelihood(
+    model::ARNormal1D{K},
     x::Vector{T}
 ) where {K, T <: AbstractFloat}
     r = Regressors1D(K, x)
@@ -59,7 +95,8 @@ function (model::ARNormal1D{K})(
     stats_λ * η_λ .- .5 * log(2π)
 end
 
-function (models::Vector{ARNormal1D{K}})(
+function loglikelihood(
+    models::ARNormal1DSet{K},
     x::Vector{T}
 ) where {K, T<:AbstractFloat}
     r = Regressors1D(K, x)
@@ -72,14 +109,16 @@ function (models::Vector{ARNormal1D{K}})(
     s2 = hcat([vec(x̂ₜ* x̂ₜ') for x̂ₜ in r]...)
     stats_h = vcat(s1, -.5 * s2)
 
+    iter = zip(eachrow(η_hs * stats_h), eachrow(η_λs))
     vcat([(hcat(-.5 * x.^2 .+ row, .5 * ones(T, length(x))) * η_λ)'
-           for (row, η_λ) in zip(eachrow(η_hs * stats_h), eachrow(η_λs))]...)
+          for (row, η_λ) in iter]...) .- .5 * log(2π)
 end
 
-function (models::Vector{Vector{ARNormal1D{K}}})(
+function loglikelihood(
+    models::Vector{ARNormal1DSet{K}},
     X::Matrix{T}
 ) where {K, T<:AbstractFloat}
-    reduce(+, [models[d](X[d, :]) for d in 1:size(X, 1)])
+    reduce(+, [loglikelihood(models[d], X[d, :]) for d in 1:size(X, 1)])
 end
 
 #######################################################################
@@ -88,6 +127,14 @@ end
 # NOTE: we use the MAP of precision parameters and we integrate over the
 #       the filters (h_1, h_2, ...)
 
+"""
+    predict(model::ARNormal1D{K}, x::Vector{T})
+    predict(model::ARNormal1DSet{K}, x::Vector{T})
+    predict(model::Vector{ARNormal1DSet{K}}, x::Vector{T})
+
+Return the logarithm of the posterior predictive distribution for each
+frame `x[t]`.
+"""
 function predict(
     model::ARNormal1D{K},
     x::Vector{T}
@@ -111,18 +158,12 @@ function predict(
 end
 
 function predict(
-    models::Vector{ARNormal1D{K}},
+    models::ARNormal1DSet{K},
     x::Vector{T}
 ) where {K, T<:AbstractFloat}
     vcat([predict(models[s], x)' for s in 1:length(models)]...)
 end
 
-"""
-    predict(model, X)
-
-Return the logarithm of the posterior predictive distribution for each
-frame of `X`
-"""
 function predict(
     models::Vector{Vector{ARNormal1D{K}}},
     X::Matrix{T}
@@ -133,34 +174,11 @@ end
 ########################################################################
 # Accumulate statistics
 
-function update_h!(
-    models::Vector{ARNormal1D{K}},
-    x::Vector{T},
-    resps::Matrix{T}
-) where {K, T<:AbstractFloat}
-
-    r = Regressors1D(K, x)
-
-    # Sufficient statistics
-    s1 = hcat([xₜ * x̂ₜ for (xₜ, x̂ₜ) in zip(x, r)]...)
-    s2 = hcat([vec(x̂ₜ* x̂ₜ') for x̂ₜ in r]...)
-    stats_h = vcat(s1, -.5 * s2)
-
-    accstats = (resps * stats_h')
-
-    for (m, s) in zip(models, eachrow(accstats))
-        E_λ = mean(m.λposterior)
-        η₀ = naturalparam(m.hprior)
-        update!(m.hposterior, η₀ .+ s .* E_λ)
-    end
-end
-
 function accstats_h(
     models::Vector{ARNormal1D{K}},
     x::Vector{T},
     resps::Matrix{T}
 ) where {K, T<:AbstractFloat}
-
     r = Regressors1D(K, x)
 
     # Sufficient statistics
@@ -173,45 +191,11 @@ function accstats_h(
     [mean(m.λposterior) .* s for (m, s) in zip(models, eachrow(accstats))]
 end
 
-function update_h!(
-    models::Vector{Vector{ARNormal1D{K}}},
-    X::Matrix{T},
-    resps::Matrix{T}
-) where {K, T<:AbstractFloat}
-    for d in 1:length(models)
-        update_h!(models[d], X[d, :], resps)
-    end
-end
-
-function update_λ!(
-    models::Vector{ARNormal1D{K}},
-    x::Vector{T},
-    resps::Matrix{T}
-) where {K, T<:AbstractFloat}
-
-    r = Regressors1D(K, x)
-
-    # Sufficient statistics
-    s1 = hcat([xₜ * x̂ₜ for (xₜ, x̂ₜ) in zip(x, r)]...)
-    s2 = hcat([vec(x̂ₜ* x̂ₜ') for x̂ₜ in r]...)
-    stats_h = vcat(s1, -.5 * s2)
-
-    η_hs = vcat([gradlognorm(model.hposterior)' for model in models]...)
-
-    for (hs, m, γ)  in zip(eachrow(η_hs * stats_h), models, eachrow(resps))
-        λs = hcat(-.5 * x.^2 .+ hs, .5 * ones(T, length(x)))'
-        accstats = λs * γ
-        η₀ = naturalparam(m.λprior)
-        update!(m.λposterior, η₀ .+ accstats)
-    end
-end
-
 function accstats_λ(
     models::Vector{ARNormal1D{K}},
     x::Vector{T},
     resps::Matrix{T}
 ) where {K, T<:AbstractFloat}
-
     r = Regressors1D(K, x)
 
     # Sufficient statistics
@@ -228,16 +212,6 @@ function accstats_λ(
         push!(accstats, s)
     end
     accstats
-end
-
-function update_λ!(
-    models::Vector{Vector{ARNormal1D{K}}},
-    X::Matrix{T},
-    resps::Matrix{T}
-) where {K, T<:AbstractFloat}
-    for d in 1:length(models)
-        update_λ!(models[d], X[d, :], resps)
-    end
 end
 
 #######################################################################
@@ -258,25 +232,4 @@ function load(
     K = data[:order]
     convert(Vector{Vector{ARNormal1D{K}}}, m)
 end
-
-export trajectory
-
-function trajectory(
-    models::Vector{ARNormal1D{K}},
-    x::Vector{T},
-    resps::Matrix{T}
-) where {K, T<:AbstractFloat}
-    r = Regressors1D(K, x)
-
-    E_λ = vcat([mean(model.λposterior)' for model in models]...)
-    hs = vcat([mean(model.hposterior)' for model in models]...)
-
-    # Sufficient statistics for h
-    s1 = hcat([hs * x̂ₜ for x̂ₜ in r]...)
-
-    μ = dropdims(sum(s1 .* resps, dims = 1), dims = 1)
-    λ = dropdims(sum(E_λ .* resps, dims = 1), dims = 1)
-    μ, λ
-end
-
 
