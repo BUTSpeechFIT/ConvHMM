@@ -221,7 +221,7 @@ function save(
     fname::AbstractString,
     model::Vector{Vector{ARNormal1D{K}}}
 ) where K
-    bson(fname, Dict(:model => model, :order=>K))
+    bson(fname, Dict(:model => model, :order=>K, :type=>typeof(model)))
 end
 
 function load(
@@ -230,6 +230,7 @@ function load(
     data = BSON.load(fname)
     m = data[:model]
     K = data[:order]
-    convert(Vector{Vector{ARNormal1D{K}}}, m)
+    T = data[:type]
+    convert(T, m)
 end
 
