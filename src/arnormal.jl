@@ -301,7 +301,7 @@ function accstats_λ(
 ) where {K, T<:AbstractFloat}
     ssize = length(gradlognorm(models[1].λposterior)
                   )
-    stats_λ = zeros(T, length(models), ssize)
+    stats_λ = [zeros(T, ssize) for i in 1:length(models)]
     η_hs = vcat([gradlognorm(model.hposterior)' for model in models]...)
     for (t, x) in enumerate(fiter)
         r = Regressors1D(K, x)
@@ -316,7 +316,7 @@ function accstats_λ(
         for (i, hs) in enumerate(eachrow(Hs))
             s = hcat(-.5 * x.^2 .+ hs, .5 * ones(T, length(x)))
             s = dropdims(sum(s, dims = 1), dims = 1)
-            stats_λ[i, :] .+= s * γ[i, t]
+            stats_λ[i][:] .+= s * γ[i, t]
         end
     end
     stats_λ
