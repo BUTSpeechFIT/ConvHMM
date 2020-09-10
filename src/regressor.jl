@@ -35,3 +35,44 @@ function Base.iterate(r::Regressors1D{K}, state = nothing) where K
     return (copy(buffer), (buffer, t+1))
 end
 
+#######################################################################
+# Iterator over overlapping frames of a signal.
+
+struct FrameIterator{T}
+    signal::Vector{T}
+    framelength::Int64
+    hopsize::Int64
+    window::Vector{T}
+end
+
+function Base.length(it::FrameIterator)
+    if length(it.signal) <= it.framelength
+        return 0
+    end
+    1 + (length(it.signal) - it.framelength) ÷ it.hopsize
+end
+
+function Base.iterate(it::FrameIterator, state::Int64=1)
+    if state > length(it)
+        return nothing
+    end
+    framestart = (state - 1) * it.hopsize + 1
+    frameend = framestart + it.framelength - 1
+    (it.signal[framestart:frameend], state + 1)
+end
+
+# Return an iterator over the frames of the signal `x`
+function frames(x::Vector{T}, sr::Real, t::Real, Δt::Real, window::Function) where T <:AbstractFloat
+    N = Int64(sr * t)
+    FrameIterator{T}(x, N, Int64(sr * Δt), window(N))
+end
+
+#######################################################################
+# Hann window
+
+function hannwindow(N::Int64)
+    Ωₙ = 2π / N
+    x = range(-N/2, N/2, length = N)
+    cos.((Ωₙ / 2) .* x).^2
+end
+

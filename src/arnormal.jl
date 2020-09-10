@@ -76,6 +76,30 @@ log-likelihood per component is returned.
 """
 function loglikelihood(
     model::ARNormal1D{K},
+    fiter::FrameIterator{T}
+) where {K, T<:AbstractFloat}
+    # Expectation of the natural parameters
+    η_h = gradlognorm(model.hposterior)
+    η_λ = gradlognorm(model.λposterior)
+
+    llh = T[]
+    for x in fiter
+        r = Regressors1D(K, x)
+        # Sufficient statistics for h
+        s1 = hcat([xₜ * x̂ₜ for (xₜ, x̂ₜ) in zip(x, r)]...)
+        s2 = hcat([vec(x̂ₜ* x̂ₜ') for x̂ₜ in r]...)
+        stats_h = vcat(s1, -.5 * s2)
+
+        # Sufficient statistics for λ
+        stats_λ = hcat(-.5 * x.^2 .+ stats_h' * η_h, .5 * ones(T, length(x)))
+
+        push!(llh, sum(stats_λ * η_λ .- .5 * log(2π)))
+    end
+    llh
+end
+
+function loglikelihood(
+    model::ARNormal1D{K},
     x::Vector{T}
 ) where {K, T <: AbstractFloat}
     r = Regressors1D(K, x)
@@ -97,6 +121,31 @@ end
 
 function loglikelihood(
     models::ARNormal1DSet{K},
+    fiter::FrameIterator{T}
+) where {K, T<:AbstractFloat}
+    η_hs = vcat([gradlognorm(model.hposterior)' for model in models]...)
+    η_λs = vcat([gradlognorm(model.λposterior)' for model in models]...)
+
+    llh = Vector{Vector{T}}()
+    for x in fiter
+        r = Regressors1D(K, x)
+
+        # Sufficient statistics for h
+        s1 = hcat([xₜ * x̂ₜ for (xₜ, x̂ₜ) in zip(x, r)]...)
+        s2 = hcat([vec(x̂ₜ* x̂ₜ') for x̂ₜ in r]...)
+        stats_h = vcat(s1, -.5 * s2)
+
+        iter = zip(eachrow(η_hs * stats_h), eachrow(η_λs))
+        llh_t = vcat([(hcat(-.5 * x.^2 .+ row, .5 * ones(T, length(x))) * η_λ)'
+                      for (row, η_λ) in iter]...) .- .5 * log(2π)
+        llh_t = dropdims(sum(llh_t, dims = 2), dims = 2)
+        push!(llh, llh_t)
+    end
+    hcat(llh...)
+end
+
+function loglikelihood(
+    models::ARNormal1DSet{K},
     x::Vector{T}
 ) where {K, T<:AbstractFloat}
     r = Regressors1D(K, x)
@@ -112,6 +161,13 @@ function loglikelihood(
     iter = zip(eachrow(η_hs * stats_h), eachrow(η_λs))
     vcat([(hcat(-.5 * x.^2 .+ row, .5 * ones(T, length(x))) * η_λ)'
           for (row, η_λ) in iter]...) .- .5 * log(2π)
+end
+
+function loglikelihood(
+    models::Vector{ARNormal1DSet{K}},
+    fiters::Vector{FrameIterator{T}}
+) where {K, T<:AbstractFloat}
+    reduce(+, [loglikelihood(models[d], fiters[d]) for d in 1:length(fiters)])
 end
 
 function loglikelihood(
@@ -191,6 +247,30 @@ function accstats_h(
     [mean(m.λposterior) .* s for (m, s) in zip(models, eachrow(accstats))]
 end
 
+function accstats_h(
+    models::ARNormal1DSet{K},
+    fiter::FrameIterator{T},
+    resps::Matrix{T}
+) where {K, T<:AbstractFloat}
+
+    stats_h = Vector{Vector{T}}()
+    for x in fiter
+        r = Regressors1D(K, x)
+
+        # Sufficient statistics
+        s1 = hcat([xₜ * x̂ₜ for (xₜ, x̂ₜ) in zip(x, r)]...)
+        s2 = hcat([vec(x̂ₜ* x̂ₜ') for x̂ₜ in r]...)
+        stats_h_t = vcat(s1, -.5 * s2)
+
+        stats_h_t = dropdims(sum(stats_h_t, dims = 2), dims = 2)
+        push!(stats_h, stats_h_t)
+    end
+    stats_h = hcat(stats_h...)
+    accstats = (resps * stats_h')
+
+    [mean(m.λposterior) .* s for (m, s) in zip(models, eachrow(accstats))]
+end
+
 function accstats_λ(
     models::Vector{ARNormal1D{K}},
     x::Vector{T},
@@ -212,6 +292,34 @@ function accstats_λ(
         push!(accstats, s)
     end
     accstats
+end
+
+function accstats_λ(
+    models::ARNormal1DSet{K},
+    fiter::FrameIterator{T},
+    γ::Matrix{T}
+) where {K, T<:AbstractFloat}
+    ssize = length(gradlognorm(models[1].λposterior)
+                  )
+    stats_λ = zeros(T, length(models), ssize)
+    η_hs = vcat([gradlognorm(model.hposterior)' for model in models]...)
+    for (t, x) in enumerate(fiter)
+        r = Regressors1D(K, x)
+
+        # Sufficient statistics
+        s1 = hcat([xₜ * x̂ₜ for (xₜ, x̂ₜ) in zip(x, r)]...)
+        s2 = hcat([vec(x̂ₜ* x̂ₜ') for x̂ₜ in r]...)
+        stats_h_t = vcat(s1, -.5 * s2)
+
+        Hs = η_hs * stats_h_t
+        stats_λ_t = Vector{Vector{T}}()
+        for (i, hs) in enumerate(eachrow(Hs))
+            s = hcat(-.5 * x.^2 .+ hs, .5 * ones(T, length(x)))
+            s = dropdims(sum(s, dims = 1), dims = 1)
+            stats_λ[i, :] .+= s * γ[i, t]
+        end
+    end
+    stats_λ
 end
 
 #######################################################################

@@ -7,6 +7,9 @@ using PaddedViews
 using MarkovModels
 
 export Regressors1D
+export FrameIterator
+export frames
+export hannwindow
 
 include("regressor.jl")
 
